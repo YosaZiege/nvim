@@ -1,5 +1,4 @@
 local get_floating_term = require("keymaps").get_floating_term
-local nvim_treesitter = require("nvim-treesitter")
 
 --for auto reload file when ai makes an edit
 vim.api.nvim_create_autocmd({ "TermLeave" }, {
@@ -19,24 +18,28 @@ vim.api.nvim_create_autocmd("FileType", {
 	end,
 })
 
-vim.api.nvim_create_autocmd("FileType", {
-	callback = function()
-		local available_parsers = nvim_treesitter.get_available()
-		local installed_parsers = nvim_treesitter.get_installed()
-		local parser = vim.treesitter.language.get_lang(vim.bo.filetype)
-		local available = vim.tbl_contains(available_parsers, parser)
-		local installed = vim.tbl_contains(installed_parsers, parser)
-		if available and installed then
-			vim.treesitter.start()
-		elseif available and not installed then
-			nvim_treesitter.install(parser)
-		end
-	end,
-})
+require("nvim-treesitter.install").setup_auto_install()
 
 --auto spawn terminal to avoid ~ map race condition
 vim.api.nvim_create_autocmd("VimEnter", {
 	callback = function()
 		get_floating_term("pi"):spawn()
+	end,
+})
+
+--new java classes get their package declaration from the folder under src/<source>/java
+--mirrors IntelliJ's "new class" behaviour
+vim.api.nvim_create_autocmd("BufNewFile", {
+	pattern = "*.java",
+	callback = function(args)
+		local rel = vim.fs.dirname(args.file):match("/src/%a+/java/(.+)$")
+		local pkg = rel and rel:gsub("/", ".")
+		local class_name = vim.fn.fnamemodify(args.file, ":t:r")
+		local lines = pkg and { "package " .. pkg .. ";", "" } or {}
+		vim.list_extend(lines, { "public class " .. class_name .. " {", "\t", "}" })
+		table.insert(lines, "")
+		vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
+		vim.api.nvim_win_set_cursor(0, { pkg and 4 or 3, 1 })
+		vim.bo[args.buf].modified = false
 	end,
 })
